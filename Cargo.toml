@@ -1,0 +1,60 @@
+[package]
+name = "simse"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.80"
+description = "Official Rust SDK for the Simse public API (api.simse.dev) — Anthropic-Messages-compatible."
+license = "MIT"
+repository = "https://github.com/telordev/simse"
+homepage = "https://simse.dev"
+documentation = "https://docs.rs/simse"
+readme = "README.md"
+keywords = ["simse", "llm", "ai", "anthropic", "messages"]
+categories = ["api-bindings", "asynchronous"]
+
+# Standalone crate: its own workspace so it is NOT pulled into the parent
+# `simse` cargo workspace (which has a different toolchain + path deps).
+[workspace]
+
+[features]
+# Default: rustls TLS so the crate builds without a system OpenSSL.
+default = ["rustls-tls"]
+rustls-tls = ["reqwest/rustls-tls"]
+native-tls = ["reqwest/native-tls"]
+
+[dependencies]
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream"] }
+tokio = { version = "1", features = ["rt", "time", "macros", "sync"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+async-trait = "0.1"
+futures = "0.3"
+async-stream = "0.3"
+bytes = "1"
+pin-project-lite = "0.2"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
+wiremock = "0.6"
+async-trait = "0.1"
+
+[[example]]
+name = "basic_message"
+path = "examples/basic_message.rs"
+
+[[example]]
+name = "streaming"
+path = "examples/streaming.rs"
+
+[[example]]
+name = "tool_use"
+path = "examples/tool_use.rs"
+
+[[example]]
+name = "list_models"
+path = "examples/list_models.rs"
+
+[[example]]
+name = "session"
+path = "examples/session.rs"
