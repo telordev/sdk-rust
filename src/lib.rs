@@ -95,7 +95,7 @@ pub mod resource {
 /// Request-parameter structs and response wrappers used by the resource methods.
 pub mod params {
     pub use crate::resources::flags::FlagSet;
-    pub use crate::resources::memories::MemoryCreateParams;
+    pub use crate::resources::memories::{MemoryCreateParams, MemoryListParams};
     pub use crate::resources::models::ModelListParams;
     pub use crate::resources::plugins::InstallParams;
     pub use crate::resources::pm::{

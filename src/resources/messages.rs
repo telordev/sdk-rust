@@ -10,7 +10,7 @@ use reqwest::Method;
 use crate::client::{Client, ResponseMeta};
 use crate::error::{Error, Result};
 use crate::sse::{MessageAccumulator, SseDecoder};
-use crate::types::{Message, MessageCreateParams, MessageStreamEvent, TokenCount};
+use crate::types::{ContentDelta, Message, MessageCreateParams, MessageStreamEvent, TokenCount};
 
 /// The Messages resource.
 #[derive(Clone)]
@@ -113,6 +113,32 @@ impl MessageStream {
     /// Borrow the in-progress message (after at least `message_start`).
     pub fn current_message(&self) -> Option<&Message> {
         self.accumulator.current()
+    }
+
+    /// Drive the stream to completion and return only the accumulated assistant
+    /// text (the concatenation of every `text` block). Mirrors the TS
+    /// `finalText()` / Python `get_final_text()` convenience.
+    pub async fn final_text(self) -> Result<String> {
+        Ok(self.accumulate().await?.text())
+    }
+
+    /// Adapt this event stream into a `Stream` of just the text deltas — each
+    /// item is one `text_delta` fragment (errors propagate). Mirrors the TS
+    /// `textStream` / Python `text_stream` convenience. Other event kinds
+    /// (tool-input deltas, pings, lifecycle events) are filtered out; the
+    /// accumulator is still driven, so `tool_use` blocks remain reconstructable
+    /// off the underlying message if needed.
+    pub fn text_stream(self) -> impl Stream<Item = Result<String>> + Send {
+        self.filter_map(|ev| async move {
+            match ev {
+                Ok(MessageStreamEvent::ContentBlockDelta {
+                    delta: ContentDelta::TextDelta { text },
+                    ..
+                }) => Some(Ok(text)),
+                Ok(_) => None,
+                Err(e) => Some(Err(e)),
+            }
+        })
     }
 
     /// Refill `pending` from the byte stream. Returns `false` when the stream is

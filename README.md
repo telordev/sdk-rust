@@ -144,6 +144,23 @@ let message = client.messages().stream(params).await?.accumulate().await?;
 println!("{}", message.text());
 ```
 
+Or iterate only the text deltas (the `textStream` / `text_stream` equivalent),
+or drain straight to the final text:
+
+```rust
+use futures::StreamExt;
+
+// Stream of just the text fragments:
+let mut text = client.messages().stream(params).await?.text_stream();
+while let Some(chunk) = text.next().await {
+    print!("{}", chunk?);
+}
+
+// Or the accumulated final text in one call:
+let text = client.messages().stream(params).await?.final_text().await?;
+println!("{text}");
+```
+
 ## Tool use
 
 ```rust
@@ -276,6 +293,7 @@ client.usage().retrieve().await?;              // GET /v1/usage
 client.billing().retrieve().await?;            // GET /v1/billing
 
 client.memories().list().await?;               // GET /v1/memories
+client.memories().list_with(MemoryListParams { limit: Some(20), ..Default::default() }).await?;
 client.memories().create(params).await?;       // POST /v1/memories
 client.memories().stats().await?;              // GET /v1/memories/stats
 
@@ -301,6 +319,8 @@ match client.messages().create(params).await {
     Ok(message) => { /* ... */ }
     Err(e) if e.is_rate_limit() => eprintln!("rate limited; request-id {:?}", e.request_id()),
     Err(e) if e.is_authentication() => eprintln!("bad key"),
+    Err(e) if e.is_conflict() => eprintln!("conflict"),                 // 409
+    Err(e) if e.is_unprocessable_entity() => eprintln!("unprocessable"), // 422
     Err(e) => eprintln!("{e}"),
 }
 ```

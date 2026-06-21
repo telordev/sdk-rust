@@ -29,8 +29,12 @@ pub enum ApiErrorKind {
     PermissionDenied,
     /// `404 not_found_error`
     NotFound,
+    /// `409 conflict`
+    Conflict,
     /// `413 request_too_large`
     RequestTooLarge,
+    /// `422 unprocessable entity`
+    UnprocessableEntity,
     /// `429 rate_limit_error`
     RateLimit,
     /// `500 api_error`
@@ -49,7 +53,9 @@ impl ApiErrorKind {
             401 => Self::Authentication,
             403 => Self::PermissionDenied,
             404 => Self::NotFound,
+            409 => Self::Conflict,
             413 => Self::RequestTooLarge,
+            422 => Self::UnprocessableEntity,
             429 => Self::RateLimit,
             500 => Self::InternalServer,
             503 => Self::Overloaded,
@@ -64,7 +70,9 @@ impl ApiErrorKind {
             Self::Authentication => "authentication_error",
             Self::PermissionDenied => "permission_error",
             Self::NotFound => "not_found_error",
+            Self::Conflict => "conflict",
             Self::RequestTooLarge => "request_too_large",
+            Self::UnprocessableEntity => "unprocessable_entity",
             Self::RateLimit => "rate_limit_error",
             Self::InternalServer => "api_error",
             Self::Overloaded => "overloaded_error",
@@ -79,7 +87,9 @@ impl ApiErrorKind {
             Self::Authentication => "AuthenticationError",
             Self::PermissionDenied => "PermissionDeniedError",
             Self::NotFound => "NotFoundError",
+            Self::Conflict => "ConflictError",
             Self::RequestTooLarge => "RequestTooLargeError",
+            Self::UnprocessableEntity => "UnprocessableEntityError",
             Self::RateLimit => "RateLimitError",
             Self::InternalServer => "InternalServerError",
             Self::Overloaded => "OverloadedError",
@@ -273,9 +283,17 @@ impl Error {
     pub fn is_not_found(&self) -> bool {
         self.is_kind(ApiErrorKind::NotFound)
     }
+    /// `409 ConflictError`.
+    pub fn is_conflict(&self) -> bool {
+        self.is_kind(ApiErrorKind::Conflict)
+    }
     /// `413 RequestTooLargeError`.
     pub fn is_request_too_large(&self) -> bool {
         self.is_kind(ApiErrorKind::RequestTooLarge)
+    }
+    /// `422 UnprocessableEntityError`.
+    pub fn is_unprocessable_entity(&self) -> bool {
+        self.is_kind(ApiErrorKind::UnprocessableEntity)
     }
     /// `429 RateLimitError`.
     pub fn is_rate_limit(&self) -> bool {
@@ -302,7 +320,9 @@ fn default_message(kind: ApiErrorKind) -> String {
         ApiErrorKind::Authentication => "authentication failed",
         ApiErrorKind::PermissionDenied => "permission denied",
         ApiErrorKind::NotFound => "not found",
+        ApiErrorKind::Conflict => "conflict",
         ApiErrorKind::RequestTooLarge => "request too large",
+        ApiErrorKind::UnprocessableEntity => "unprocessable entity",
         ApiErrorKind::RateLimit => "rate limited",
         ApiErrorKind::InternalServer => "internal server error",
         ApiErrorKind::Overloaded => "overloaded",
@@ -338,7 +358,12 @@ mod tests {
         assert_eq!(ApiErrorKind::from_status(401), ApiErrorKind::Authentication);
         assert_eq!(ApiErrorKind::from_status(403), ApiErrorKind::PermissionDenied);
         assert_eq!(ApiErrorKind::from_status(404), ApiErrorKind::NotFound);
+        assert_eq!(ApiErrorKind::from_status(409), ApiErrorKind::Conflict);
         assert_eq!(ApiErrorKind::from_status(413), ApiErrorKind::RequestTooLarge);
+        assert_eq!(
+            ApiErrorKind::from_status(422),
+            ApiErrorKind::UnprocessableEntity
+        );
         assert_eq!(ApiErrorKind::from_status(429), ApiErrorKind::RateLimit);
         assert_eq!(ApiErrorKind::from_status(500), ApiErrorKind::InternalServer);
         assert_eq!(ApiErrorKind::from_status(503), ApiErrorKind::Overloaded);
@@ -378,6 +403,28 @@ mod tests {
         assert!(is_retryable_status(409));
         assert!(!is_retryable_status(400));
         assert!(!is_retryable_status(404));
+    }
+
+    #[test]
+    fn classifies_conflict_and_unprocessable() {
+        let conflict = Error::from_response_parts(409, None, b"");
+        assert!(conflict.is_conflict());
+        assert!(!conflict.is_not_found());
+        // 409 stays retryable per the contract.
+        assert!(conflict.is_retryable());
+        match conflict {
+            Error::Api(b) => assert_eq!(b.kind.class_name(), "ConflictError"),
+            _ => panic!("expected Api"),
+        }
+
+        let unproc = Error::from_response_parts(422, None, b"");
+        assert!(unproc.is_unprocessable_entity());
+        // 422 is not in the retryable set.
+        assert!(!unproc.is_retryable());
+        match unproc {
+            Error::Api(b) => assert_eq!(b.kind.class_name(), "UnprocessableEntityError"),
+            _ => panic!("expected Api"),
+        }
     }
 
     #[test]

@@ -54,6 +54,17 @@ impl Memories {
             .await
     }
 
+    /// `GET /v1/memories?query=&limit=` with `limit` (and an optional `query`)
+    /// query parameters. With no `query`, this is the recency list with a cap;
+    /// with a `query` it is the semantic search (the gateway lists when `query`
+    /// is absent and searches when it is set).
+    pub async fn list_with(&self, params: MemoryListParams) -> Result<MemoryList> {
+        let path = params.to_path();
+        self.client
+            .request_json::<(), _>(Method::GET, &path, None)
+            .await
+    }
+
     /// `GET /v1/memories?query=&limit=` → semantic search.
     pub async fn search(&self, query: impl AsRef<str>, limit: Option<u32>) -> Result<MemoryList> {
         let mut path = format!("/v1/memories?query={}", urlencode(query.as_ref()));
@@ -84,6 +95,33 @@ impl Memories {
     }
 }
 
+/// Query parameters for `memories.list_with` (`?query=&limit=`).
+#[derive(Debug, Clone, Default)]
+pub struct MemoryListParams {
+    /// Semantic-search query. When absent, the recency list is returned; when
+    /// set, the gateway runs a semantic search.
+    pub query: Option<String>,
+    /// Page size (omit for the server-side default).
+    pub limit: Option<u32>,
+}
+
+impl MemoryListParams {
+    fn to_path(&self) -> String {
+        let mut q: Vec<String> = Vec::new();
+        if let Some(query) = &self.query {
+            q.push(format!("query={}", urlencode(query)));
+        }
+        if let Some(l) = self.limit {
+            q.push(format!("limit={l}"));
+        }
+        if q.is_empty() {
+            "/v1/memories".to_string()
+        } else {
+            format!("/v1/memories?{}", q.join("&"))
+        }
+    }
+}
+
 /// Minimal percent-encoding for a query value (encodes the characters that would
 /// break a query string; the gateway tolerates the rest).
 fn urlencode(s: &str) -> String {
@@ -108,5 +146,26 @@ mod tests {
         assert_eq!(urlencode("hello world"), "hello%20world");
         assert_eq!(urlencode("a&b=c"), "a%26b%3Dc");
         assert_eq!(urlencode("plain"), "plain");
+    }
+
+    #[test]
+    fn builds_list_query_path() {
+        assert_eq!(
+            MemoryListParams {
+                limit: Some(5),
+                ..Default::default()
+            }
+            .to_path(),
+            "/v1/memories?limit=5"
+        );
+        assert_eq!(
+            MemoryListParams {
+                query: Some("rust ownership".into()),
+                limit: Some(3),
+            }
+            .to_path(),
+            "/v1/memories?query=rust%20ownership&limit=3"
+        );
+        assert_eq!(MemoryListParams::default().to_path(), "/v1/memories");
     }
 }
