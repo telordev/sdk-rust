@@ -698,6 +698,85 @@ async fn count_tokens_parses() {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
+// Session create — system + metadata params (spec §2.2)
+// ════════════════════════════════════════════════════════════════════════════
+
+#[tokio::test]
+async fn session_create_carries_system_and_metadata() {
+    use std::collections::HashMap;
+    use wiremock::matchers::body_partial_json;
+
+    let server = MockServer::start().await;
+
+    // Assert that the POST body contains both new fields.
+    Mock::given(method("POST"))
+        .and(path("/v1/sessions"))
+        .and(body_partial_json(serde_json::json!({
+            "system": "never move money without CFO approval",
+            "metadata": {"team": "eng", "role": "runner"}
+        })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "id": "sess_sys",
+            "model": "zoysia",
+            "status": "active",
+            "created_at": "2026-06-23T00:00:00Z"
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let client = client_for(&server);
+    let mut meta = HashMap::new();
+    meta.insert("team".to_string(), "eng".to_string());
+    meta.insert("role".to_string(), "runner".to_string());
+
+    let sess = client
+        .sessions()
+        .create(
+            simse::SessionCreateParams::new()
+                .system("never move money without CFO approval")
+                .metadata(meta),
+        )
+        .await
+        .expect("session create with system+metadata succeeds");
+
+    assert_eq!(sess.id, "sess_sys");
+}
+
+#[tokio::test]
+async fn session_create_omits_system_and_metadata_when_unset() {
+    use wiremock::matchers::body_json_string;
+
+    let server = MockServer::start().await;
+
+    // Without system/metadata, the body should be exactly the minimal object
+    // (only non-None fields: model and title if set, else {}).
+    let expected_body = serde_json::to_string(&serde_json::json!({})).unwrap();
+
+    Mock::given(method("POST"))
+        .and(path("/v1/sessions"))
+        .and(body_json_string(expected_body))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "id": "sess_bare",
+            "model": null,
+            "status": "active",
+            "created_at": "2026-06-23T00:00:00Z"
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let client = client_for(&server);
+    let sess = client
+        .sessions()
+        .create(simse::SessionCreateParams::new())
+        .await
+        .expect("session create with no fields succeeds");
+
+    assert_eq!(sess.id, "sess_bare");
+}
+
+// ════════════════════════════════════════════════════════════════════════════
 // Session prompt (buffered + streaming, anonymous SSE shape)
 // ════════════════════════════════════════════════════════════════════════════
 

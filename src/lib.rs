@@ -78,6 +78,7 @@ pub use client::{
 };
 pub use error::{ApiErrorBody, ApiErrorKind, Error, Result};
 pub use types::MessageCreateParams;
+pub use resources::sessions::SessionCreateParams;
 
 // The SSE primitives are public so callers can build their own stream consumers
 // and unit-test against the accumulator.

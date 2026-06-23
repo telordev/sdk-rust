@@ -32,6 +32,13 @@ pub struct SessionCreateParams {
     /// An optional title.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
+    /// Per-session system prompt (persona + guardrails). Injected on every
+    /// prompt turn and resume (spec §2.2).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub system: Option<String>,
+    /// Arbitrary key-value metadata attached to the session (e.g. team, role).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<std::collections::HashMap<String, String>>,
 }
 
 impl SessionCreateParams {
@@ -47,6 +54,16 @@ impl SessionCreateParams {
     /// Set the title.
     pub fn title(mut self, title: impl Into<String>) -> Self {
         self.title = Some(title.into());
+        self
+    }
+    /// Set a per-session system prompt.
+    pub fn system(mut self, system: impl Into<String>) -> Self {
+        self.system = Some(system.into());
+        self
+    }
+    /// Attach arbitrary key-value metadata to the session.
+    pub fn metadata(mut self, metadata: std::collections::HashMap<String, String>) -> Self {
+        self.metadata = Some(metadata);
         self
     }
 }
