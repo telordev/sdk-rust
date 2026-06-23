@@ -777,6 +777,80 @@ async fn session_create_omits_system_and_metadata_when_unset() {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
+// Session create — connectors field (spec §1.4 / §1.6)
+// ════════════════════════════════════════════════════════════════════════════
+
+#[tokio::test]
+async fn session_create_carries_connectors() {
+    use wiremock::matchers::body_partial_json;
+
+    let server = MockServer::start().await;
+
+    // Assert the POST body contains connectors[].connector_id and bearer.
+    Mock::given(method("POST"))
+        .and(path("/v1/sessions"))
+        .and(body_partial_json(serde_json::json!({
+            "connectors": [
+                { "connector_id": "conn_abc", "bearer": "tok_team_secret" }
+            ]
+        })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "id": "sess_conn",
+            "model": "zoysia",
+            "status": "active",
+            "created_at": "2026-06-23T00:00:00Z"
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let client = client_for(&server);
+    let sess = client
+        .sessions()
+        .create(
+            simse::SessionCreateParams::new().connectors(vec![
+                simse::SessionConnector::new("conn_abc").bearer("tok_team_secret"),
+            ]),
+        )
+        .await
+        .expect("session create with connectors succeeds");
+
+    assert_eq!(sess.id, "sess_conn");
+}
+
+#[tokio::test]
+async fn session_create_omits_connectors_when_unset() {
+    use wiremock::matchers::body_json_string;
+
+    let server = MockServer::start().await;
+
+    // No connectors field = exact minimal body {}.
+    let expected_body = serde_json::to_string(&serde_json::json!({})).unwrap();
+
+    Mock::given(method("POST"))
+        .and(path("/v1/sessions"))
+        .and(body_json_string(expected_body))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "id": "sess_no_conn",
+            "model": null,
+            "status": "active",
+            "created_at": "2026-06-23T00:00:00Z"
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let client = client_for(&server);
+    let sess = client
+        .sessions()
+        .create(simse::SessionCreateParams::new())
+        .await
+        .expect("session create without connectors succeeds");
+
+    assert_eq!(sess.id, "sess_no_conn");
+}
+
+// ════════════════════════════════════════════════════════════════════════════
 // Session prompt (buffered + streaming, anonymous SSE shape)
 // ════════════════════════════════════════════════════════════════════════════
 
@@ -1057,4 +1131,237 @@ async fn usage_dashboard_omitted_compute_still_parses() {
     assert!(!d.billing.extra_usage_enabled);
     assert_eq!(d.billing.plan_included_tokens, 200_000);
     assert!(d.compute.is_none());
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// Connectors — CRUD + test (spec §1.3, §1.6)
+// ════════════════════════════════════════════════════════════════════════════
+
+use simse::{ConnectorAuth, ConnectorCreateParams};
+
+/// `POST /v1/connectors` carries the name / type / url / auth (kind+value) and
+/// optional tool lists in the request body, and returns a Connector with the
+/// assigned id.
+#[tokio::test]
+async fn connector_create_posts_correct_body_and_returns_connector() {
+    let server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/v1/connectors"))
+        .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({
+            "id": "conn_1",
+            "user_id": "user_1",
+            "name": "My MCP",
+            "type": "mcp",
+            "url": "https://mcp.example.com/mcp",
+            "auth": { "kind": "bearer" },
+            "created_at": "2026-06-23T00:00:00Z",
+            "updated_at": "2026-06-23T00:00:00Z"
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let client = client_for(&server);
+    let conn = client
+        .connectors()
+        .create(ConnectorCreateParams::new(
+            "My MCP",
+            "https://mcp.example.com/mcp",
+            ConnectorAuth::bearer("tok_secret"),
+        ))
+        .await
+        .expect("create succeeds");
+
+    assert_eq!(conn.id, "conn_1");
+    assert_eq!(conn.name, "My MCP");
+    assert_eq!(conn.kind, "mcp");
+    assert_eq!(conn.url, "https://mcp.example.com/mcp");
+}
+
+/// `POST /v1/connectors` with tool_allowlist and tool_denylist serializes both
+/// lists in the request body.
+#[tokio::test]
+async fn connector_create_serializes_tool_lists() {
+    let server = MockServer::start().await;
+
+    // Capture the raw request body to assert it contains the tool lists.
+    let body_store: Arc<Mutex<Option<serde_json::Value>>> = Arc::new(Mutex::new(None));
+    let body_store_clone = body_store.clone();
+
+    struct CaptureBody(Arc<Mutex<Option<serde_json::Value>>>);
+    impl Respond for CaptureBody {
+        fn respond(&self, request: &Request) -> ResponseTemplate {
+            let v: serde_json::Value =
+                serde_json::from_slice(&request.body).unwrap_or_default();
+            *self.0.lock().unwrap() = Some(v);
+            ResponseTemplate::new(201).set_body_json(serde_json::json!({
+                "id": "conn_2", "user_id": "u", "name": "n", "type": "mcp",
+                "url": "https://x.com/mcp", "created_at": "", "updated_at": ""
+            }))
+        }
+    }
+
+    Mock::given(method("POST"))
+        .and(path("/v1/connectors"))
+        .respond_with(CaptureBody(body_store_clone))
+        .mount(&server)
+        .await;
+
+    let client = client_for(&server);
+    client
+        .connectors()
+        .create(
+            ConnectorCreateParams::new(
+                "n",
+                "https://x.com/mcp",
+                ConnectorAuth::bearer("tok"),
+            )
+            .tool_allowlist(vec!["search".to_string()])
+            .tool_denylist(vec!["admin".to_string()]),
+        )
+        .await
+        .expect("create succeeds");
+
+    let body = body_store.lock().unwrap().clone().unwrap();
+    let allow = body["tool_allowlist"].as_array().unwrap();
+    let deny = body["tool_denylist"].as_array().unwrap();
+    assert_eq!(allow[0], "search");
+    assert_eq!(deny[0], "admin");
+}
+
+/// `GET /v1/connectors` returns the connectors list.
+#[tokio::test]
+async fn connector_list_returns_connectors() {
+    let server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .and(path("/v1/connectors"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "connectors": [
+                { "id": "conn_1", "name": "A", "type": "mcp", "url": "https://a.com/mcp",
+                  "user_id": "u", "created_at": "", "updated_at": "" },
+                { "id": "conn_2", "name": "B", "type": "mcp", "url": "https://b.com/mcp",
+                  "user_id": "u", "created_at": "", "updated_at": "" }
+            ]
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let client = client_for(&server);
+    let list = client.connectors().list().await.expect("list succeeds");
+    assert_eq!(list.connectors.len(), 2);
+    assert_eq!(list.connectors[0].id, "conn_1");
+    assert_eq!(list.connectors[1].id, "conn_2");
+}
+
+/// `GET /v1/connectors/{id}` retrieves a single connector.
+#[tokio::test]
+async fn connector_retrieve() {
+    let server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .and(path("/v1/connectors/conn_1"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "id": "conn_1", "name": "A", "type": "mcp", "url": "https://a.com/mcp",
+            "user_id": "u", "auth": { "kind": "bearer" },
+            "created_at": "2026-06-23T00:00:00Z", "updated_at": "2026-06-23T00:00:00Z"
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let client = client_for(&server);
+    let conn = client.connectors().retrieve("conn_1").await.expect("retrieve succeeds");
+    assert_eq!(conn.id, "conn_1");
+    // Bearer value must be absent/null in the response (server redacts it).
+    if let Some(auth) = &conn.auth {
+        assert!(auth.get("value").map(|v| v.is_null()).unwrap_or(true),
+            "bearer value must be redacted");
+    }
+}
+
+/// `DELETE /v1/connectors/{id}` returns `{ deleted: true }`.
+#[tokio::test]
+async fn connector_delete() {
+    let server = MockServer::start().await;
+
+    Mock::given(method("DELETE"))
+        .and(path("/v1/connectors/conn_1"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(serde_json::json!({ "deleted": true })),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let client = client_for(&server);
+    let resp = client.connectors().delete("conn_1").await.expect("delete succeeds");
+    assert_eq!(resp["deleted"], true);
+}
+
+/// `POST /v1/connectors/{id}/test` returns `{ ok, tool_count }` on success.
+#[tokio::test]
+async fn connector_test_ok() {
+    let server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/v1/connectors/conn_1/test"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "ok": true,
+            "tool_count": 3
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let client = client_for(&server);
+    let result = client.connectors().test("conn_1").await.expect("test succeeds");
+    assert!(result.ok);
+    assert_eq!(result.tool_count, 3);
+    assert!(result.error.is_none());
+}
+
+/// `POST /v1/connectors/{id}/test` returns `{ ok: false, error }` on auth failure.
+#[tokio::test]
+async fn connector_test_auth_failure() {
+    let server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/v1/connectors/conn_1/test"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "ok": false,
+            "tool_count": 0,
+            "error": "401 Unauthorized from MCP server"
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let client = client_for(&server);
+    let result = client.connectors().test("conn_1").await.expect("test returns 200");
+    assert!(!result.ok);
+    assert_eq!(result.tool_count, 0);
+    assert!(result.error.as_deref().unwrap_or("").contains("401"));
+}
+
+/// `ConnectorAuth::per_session()` serializes `per_session: true` and omits `value`.
+#[test]
+fn connector_auth_per_session_serializes_correctly() {
+    let auth = ConnectorAuth::per_session();
+    let v = serde_json::to_value(&auth).unwrap();
+    assert_eq!(v["kind"], "bearer");
+    assert_eq!(v["per_session"], true);
+    assert!(v.get("value").map(|x| x.is_null()).unwrap_or(true));
+}
+
+/// `ConnectorAuth::bearer(...)` serializes with the token value, no per_session.
+#[test]
+fn connector_auth_bearer_serializes_correctly() {
+    let auth = ConnectorAuth::bearer("tok_secret");
+    let v = serde_json::to_value(&auth).unwrap();
+    assert_eq!(v["kind"], "bearer");
+    assert_eq!(v["value"], "tok_secret");
+    assert!(v.get("per_session").map(|x| x.is_null()).unwrap_or(true));
 }

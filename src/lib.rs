@@ -78,7 +78,8 @@ pub use client::{
 };
 pub use error::{ApiErrorBody, ApiErrorKind, Error, Result};
 pub use types::MessageCreateParams;
-pub use resources::sessions::SessionCreateParams;
+pub use resources::sessions::{SessionConnector, SessionCreateParams};
+pub use resources::connectors::{ConnectorAuth, ConnectorCreateParams, ConnectorUpdateParams};
 
 // The SSE primitives are public so callers can build their own stream consumers
 // and unit-test against the accumulator.
@@ -88,13 +89,16 @@ pub use sse::{MessageAccumulator, SseDecoder, SseEvent};
 /// streaming response handles, accessed via the `Client::<resource>()` methods.
 pub mod resource {
     pub use crate::resources::{
-        Account, Agents, Billing, Flags, Memories, MessageStream, Messages, Models, Plugins, Pm,
-        SessionPromptStream, Sessions, Usage,
+        Account, Agents, Billing, Connectors, Flags, Memories, MessageStream, Messages, Models,
+        Plugins, Pm, SessionPromptStream, Sessions, Usage,
     };
 }
 
 /// Request-parameter structs and response wrappers used by the resource methods.
 pub mod params {
+    pub use crate::resources::connectors::{
+        ConnectorAuth, ConnectorCreateParams, ConnectorUpdateParams,
+    };
     pub use crate::resources::flags::FlagSet;
     pub use crate::resources::memories::MemoryCreateParams;
     pub use crate::resources::models::ModelListParams;
@@ -104,7 +108,7 @@ pub mod params {
         ScheduleUpdateParams, Schedules, TaskCreateParams, TaskUpdateParams, Tasks, Todos,
         WorkflowCreateParams, WorkflowUpdateParams, Workflows,
     };
-    pub use crate::resources::sessions::SessionCreateParams;
+    pub use crate::resources::sessions::{SessionConnector, SessionCreateParams};
 }
 
 // The flags response type is small + frequently checked; surface it at the root.
