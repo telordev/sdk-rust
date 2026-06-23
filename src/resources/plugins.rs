@@ -93,4 +93,12 @@ impl Plugins {
             .request_json(Method::POST, "/v1/plugins/uninstall", Some(&body))
             .await
     }
+
+    /// `POST /v1/plugins/enabled` → enable or disable an installed plugin.
+    pub async fn set_enabled(&self, plugin_name: impl AsRef<str>, enabled: bool) -> Result<Value> {
+        let body = serde_json::json!({ "plugin_name": plugin_name.as_ref(), "enabled": enabled });
+        self.client
+            .request_json(Method::POST, "/v1/plugins/enabled", Some(&body))
+            .await
+    }
 }

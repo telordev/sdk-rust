@@ -1346,6 +1346,33 @@ async fn connector_test_auth_failure() {
     assert!(result.error.as_deref().unwrap_or("").contains("401"));
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+// Plugins — set_enabled (POST /v1/plugins/enabled)
+// ════════════════════════════════════════════════════════════════════════════
+
+#[tokio::test]
+async fn plugins_set_enabled_posts_correct_body() {
+    let server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/v1/plugins/enabled"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "updated": true
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let client = client_for(&server);
+    let result = client
+        .plugins()
+        .set_enabled("github", false)
+        .await
+        .expect("set_enabled succeeds");
+
+    assert_eq!(result["updated"], true);
+}
+
 /// `ConnectorAuth::per_session()` serializes `per_session: true` and omits `value`.
 #[test]
 fn connector_auth_per_session_serializes_correctly() {
