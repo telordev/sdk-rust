@@ -3,6 +3,7 @@
 
 pub mod account;
 pub mod agents;
+pub mod connectors;
 pub mod flags;
 pub mod memories;
 pub mod messages;
@@ -13,6 +14,7 @@ pub mod sessions;
 
 pub use account::{Account, Billing, Usage};
 pub use agents::Agents;
+pub use connectors::Connectors;
 pub use flags::Flags;
 pub use memories::Memories;
 pub use messages::{MessageStream, Messages};

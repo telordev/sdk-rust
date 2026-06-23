@@ -898,6 +898,70 @@ pub struct ResumedSession {
 // Memories
 // ════════════════════════════════════════════════════════════════════════════
 
+// ════════════════════════════════════════════════════════════════════════════
+// Connectors
+// ════════════════════════════════════════════════════════════════════════════
+
+/// A registered connector (remote-MCP server). Bearer and header values are
+/// **always redacted** in API responses (spec §1.3); the `auth` field is
+/// present but its `value` is `null`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct Connector {
+    /// The connector id.
+    pub id: String,
+    /// The owning user id.
+    #[serde(default)]
+    pub user_id: String,
+    /// A human-readable name.
+    #[serde(default)]
+    pub name: String,
+    /// The connector type (always `"mcp"`).
+    #[serde(rename = "type", default)]
+    pub kind: String,
+    /// The MCP endpoint URL.
+    #[serde(default)]
+    pub url: String,
+    /// Auth metadata (value redacted).
+    #[serde(default)]
+    pub auth: Option<serde_json::Value>,
+    /// Static extra headers (values redacted).
+    #[serde(default)]
+    pub headers: Option<serde_json::Value>,
+    /// Tool allowlist, if set.
+    #[serde(default)]
+    pub tool_allowlist: Option<Vec<String>>,
+    /// Tool denylist, if set.
+    #[serde(default)]
+    pub tool_denylist: Option<Vec<String>>,
+    /// Creation timestamp.
+    #[serde(default)]
+    pub created_at: String,
+    /// Last-updated timestamp.
+    #[serde(default)]
+    pub updated_at: String,
+}
+
+/// `GET /v1/connectors` envelope.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ConnectorList {
+    /// The connectors.
+    #[serde(default)]
+    pub connectors: Vec<Connector>,
+}
+
+/// `POST /v1/connectors/{id}/test` response.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ConnectorTestResult {
+    /// Whether `tools/list` succeeded.
+    pub ok: bool,
+    /// Number of tools returned (0 when `ok` is false).
+    #[serde(default)]
+    pub tool_count: u32,
+    /// Error message when `ok` is false.
+    #[serde(default)]
+    pub error: Option<String>,
+}
+
 /// A memory entry.
 #[derive(Debug, Clone, Deserialize)]
 pub struct Memory {

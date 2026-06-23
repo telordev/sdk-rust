@@ -13,7 +13,7 @@ use serde::Serialize;
 use crate::auth::SharedAuthProvider;
 use crate::error::{is_retryable_status, Error, Result};
 use crate::resources::{
-    Account, Agents, Billing, Flags, Memories, Messages, Models, Pm, Sessions, Usage,
+    Account, Agents, Billing, Connectors, Flags, Memories, Messages, Models, Pm, Sessions, Usage,
 };
 
 /// The default API base URL.
@@ -148,6 +148,10 @@ impl Client {
     /// The feature-flags API.
     pub fn flags(&self) -> Flags {
         Flags::new(self.clone())
+    }
+    /// The Connectors API (remote-MCP server registry).
+    pub fn connectors(&self) -> Connectors {
+        Connectors::new(self.clone())
     }
 
     // ── Internal request plumbing ──────────────────────────────────────────

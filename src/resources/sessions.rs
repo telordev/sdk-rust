@@ -23,6 +23,47 @@ pub struct Sessions {
     client: Client,
 }
 
+/// A connector attachment to include when creating a session (spec §1.4).
+///
+/// Attaches a previously registered connector (by `connector_id`) to the new
+/// session. The `bearer` and `headers` fields override the connector's stored
+/// credentials for this session only.
+#[derive(Debug, Clone, Serialize)]
+pub struct SessionConnector {
+    /// The connector ID (from `POST /v1/connectors`).
+    pub connector_id: String,
+    /// Per-session team bearer override. When set, replaces the connector's
+    /// stored default bearer for this session.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bearer: Option<String>,
+    /// Per-session static header overrides (key → value).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub headers: Option<std::collections::HashMap<String, String>>,
+}
+
+impl SessionConnector {
+    /// Create a connector attachment with the given connector ID.
+    pub fn new(connector_id: impl Into<String>) -> Self {
+        Self {
+            connector_id: connector_id.into(),
+            bearer: None,
+            headers: None,
+        }
+    }
+
+    /// Override the bearer token for this session.
+    pub fn bearer(mut self, bearer: impl Into<String>) -> Self {
+        self.bearer = Some(bearer.into());
+        self
+    }
+
+    /// Override static headers for this session.
+    pub fn headers(mut self, headers: std::collections::HashMap<String, String>) -> Self {
+        self.headers = Some(headers);
+        self
+    }
+}
+
 /// Parameters for creating a session.
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct SessionCreateParams {
@@ -32,6 +73,17 @@ pub struct SessionCreateParams {
     /// An optional title.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
+    /// Per-session system prompt (persona + guardrails). Injected on every
+    /// prompt turn and resume (spec §2.2).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub system: Option<String>,
+    /// Arbitrary key-value metadata attached to the session (e.g. team, role).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<std::collections::HashMap<String, String>>,
+    /// Connectors to attach to this session (spec §1.4). Each entry references
+    /// a registered connector and may supply a per-session bearer override.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub connectors: Option<Vec<SessionConnector>>,
 }
 
 impl SessionCreateParams {
@@ -47,6 +99,21 @@ impl SessionCreateParams {
     /// Set the title.
     pub fn title(mut self, title: impl Into<String>) -> Self {
         self.title = Some(title.into());
+        self
+    }
+    /// Set a per-session system prompt.
+    pub fn system(mut self, system: impl Into<String>) -> Self {
+        self.system = Some(system.into());
+        self
+    }
+    /// Attach arbitrary key-value metadata to the session.
+    pub fn metadata(mut self, metadata: std::collections::HashMap<String, String>) -> Self {
+        self.metadata = Some(metadata);
+        self
+    }
+    /// Attach connectors to the session (spec §1.4).
+    pub fn connectors(mut self, connectors: Vec<SessionConnector>) -> Self {
+        self.connectors = Some(connectors);
         self
     }
 }
